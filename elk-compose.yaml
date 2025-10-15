@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - ./esdata:/usr/share/elasticsearch/data
+      - ./init-ilm.sh:/usr/local/bin/init-ilm.sh
+    command: bash -c "elasticsearch & sleep 30 && /usr/local/bin/init-ilm.sh && wait"
+    ports:
+      - "9200:9200"
+    networks:
+      - laravel-app_laravel-production
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.2
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5601:5601"
+    networks:
+      - laravel-app_laravel-production
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:5601 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.2
+    container_name: logstash
+    volumes:
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5044:5044"
+    networks:
+      - laravel-app_laravel-production
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9600/_node/pipelines || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.2
+    container_name: filebeat
+    user: root
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+    depends_on:
+      logstash:
+        condition: service_healthy
+    networks:
+      - laravel-app_laravel-production
+
+  kibana-fix:
+    image: curlimages/curl:latest
+    depends_on:
+      - elasticsearch
+    entrypoint: >
+      sh -c 'sleep 15 &&
+      curl -X PUT "http://elasticsearch:9200/.kibana_8.15.2_001/_settings" 
+      -H "Content-Type: application/json" 
+      -d "{\"index\": {\"blocks.read_only_allow_delete\": \"false\"}}"'
+    networks:
+      - laravel-app_laravel-production
+
+volumes:
+  esdata:
+
+networks:
+  laravel-app_laravel-production:
+    external: true
+
+

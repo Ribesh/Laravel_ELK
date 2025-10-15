@@ -1,0 +1,79 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./nginx/conf.d/Dockerfile
+    restart: unless-stopped # Automatically restart unless the service is explicitly stopped
+    container_name: nginx
+    volumes:
+      - laravel-production
+    ports:
+      - "${NGINX_PORT}:8003"
+    depends_on:
+      php-fpm:
+        condition: service_healthy # Wait for php-fpm health check
+
+  php-fpm:
+    build:
+      context: .
+      dockerfile: ./docker/common/php-fpm/Dockerfile
+      target: production # Use the 'production' stage in the Dockerfile
+    restart: unless-stopped
+    container_name: admin-app
+    volumes:
+      - ./.env:/var/www/.env
+      - /.env:/var/www/html/.env        
+        #- ./public:/var/www/public
+      - laravel-storage-production:/var/www/storage # Mount the storage volume
+    env_file:
+      - .env
+    networks:
+      - laravel-production
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm-healthcheck || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    user: postgres
+    container_name: db
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    environment:
+      - POSTGRES_DB=${DB_DATABASE}
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres-data-production:/var/lib/postgresql/data
+    networks:
+      - laravel-production
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped # Automatically restart unless the service is explicitly stopped
+    networks:
+      - laravel-production
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  laravel-production:
+
+volumes:
+  postgres-data-production:
+  laravel-storage-production:
+
