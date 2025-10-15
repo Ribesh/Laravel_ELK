@@ -6,7 +6,7 @@
 ## Steps to run and configure ELK Stack with Monitoring
 1. Clone the environment
     ```bash
-    git clone -b ribesh-main http://gittest.midashealthservices.com.np/task/laravel-app.git
+    git clone https://github.com/Ribesh/Laravel_ELK.git
     ```
 
 2. Go inside the Laravel folder
